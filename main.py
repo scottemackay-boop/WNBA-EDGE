@@ -1,8 +1,8 @@
 import os
 import pandas as pd
 
-# Import all scraper functions
-from scrapers.wnba_gamelogs import fetch_gamelogs
+# Import all scraper functions using the actual file names you have
+from scrapers.gamelogs import fetch_gamelogs
 from scrapers.advanced_box import fetch_advanced_box
 from scrapers.prizepicks import fetch_prizepicks
 from scrapers.odds import fetch_odds
