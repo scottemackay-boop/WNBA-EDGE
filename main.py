@@ -1,117 +1,80 @@
-import requests
+# main.py
+"""
+WNBA-EDGE Main Orchestrator
+Pulls gamelogs, splits, advanced box scores, PrizePicks props, sportsbook odds,
+injuries, pace, usage, playtypes, and rest/travel info. Cleans and saves into /data.
+"""
+
+import os
 import pandas as pd
-from bs4 import BeautifulSoup
-import datetime
-import json
 
-# =========================
-# 1. WNBA.com - Game Logs & Splits
-# =========================
-def get_wnba_game_logs(player_id, season="2025"):
-    """
-    Pull game logs for a given player from WNBA Stats API.
-    """
-    url = f"https://stats.wnba.com/stats/playergamelogs?PlayerID={player_id}&Season={season}&SeasonType=Regular+Season"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    resp = requests.get(url, headers=headers).json()
+# Import all scrapers (you’ll create these files in scrapers/)
+from scrapers import (
+    wnba_gamelogs,
+    advanced_box,
+    prizepicks,
+    odds,
+    injuries,
+    pace,
+    usage_rates,
+    synergy_playtypes,
+    on_off,
+    rest_days,
+    weather_travel
+)
 
-    headers_data = resp['resultSets'][0]['headers']
-    rows = resp['resultSets'][0]['rowSet']
-    df = pd.DataFrame(rows, columns=headers_data)
-    return df
+DATA_DIR = "data"
 
+def ensure_data_dir():
+    if not os.path.exists(DATA_DIR):
+        os.makedirs(DATA_DIR)
 
-def get_wnba_splits(player_id, season="2025"):
-    """
-    Pull player splits (home/away, win/loss, etc.).
-    """
-    url = f"https://stats.wnba.com/stats/playerdashboardbygeneralsplits?PlayerID={player_id}&Season={season}&SeasonType=Regular+Season"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    resp = requests.get(url, headers=headers).json()
+def run_all_scrapers():
+    ensure_data_dir()
 
-    headers_data = resp['resultSets'][1]['headers']
-    rows = resp['resultSets'][1]['rowSet']
-    df = pd.DataFrame(rows, columns=headers_data)
-    return df
+    print("▶ Pulling WNBA Gamelogs + Splits...")
+    gamelogs = wnba_gamelogs.fetch_gamelogs()
+    gamelogs.to_csv(f"{DATA_DIR}/gamelogs.csv", index=False)
 
+    print("▶ Pulling Advanced Box Scores...")
+    adv_box = advanced_box.fetch_advanced()
+    adv_box.to_csv(f"{DATA_DIR}/advanced_box.csv", index=False)
 
-# =========================
-# 2. HerHoopStats - Advanced Box Scores
-# =========================
-def scrape_herhoopstats_boxscore(game_url):
-    """
-    Scrape advanced box score data from HerHoopStats.
-    Example game_url: "https://herhoopstats.com/boxscore/wnba/game_id"
-    """
-    resp = requests.get(game_url, headers={"User-Agent": "Mozilla/5.0"})
-    soup = BeautifulSoup(resp.text, "lxml")
+    print("▶ Pulling PrizePicks Board...")
+    pp = prizepicks.fetch_prizepicks()
+    pp.to_csv(f"{DATA_DIR}/prizepicks.csv", index=False)
 
-    tables = soup.find_all("table")
-    dfs = pd.read_html(str(tables))
-    return dfs  # list of DataFrames for each team
+    print("▶ Pulling Sportsbook Odds (FD/DK/Covers)...")
+    books = odds.fetch_odds()
+    books.to_csv(f"{DATA_DIR}/odds_books.csv", index=False)
 
+    print("▶ Pulling Injuries...")
+    inj = injuries.fetch_injuries()
+    inj.to_csv(f"{DATA_DIR}/injuries.csv", index=False)
 
-# =========================
-# 3. Covers / FanDuel / DraftKings / Hardbooks
-# =========================
-def scrape_covers_player_props():
-    url = "https://www.covers.com/sport/basketball/wnba/player-props"
-    resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
-    soup = BeautifulSoup(resp.text, "lxml")
+    print("▶ Pulling Pace Stats...")
+    pace_stats = pace.fetch_pace()
+    pace_stats.to_csv(f"{DATA_DIR}/pace.csv", index=False)
 
-    props = []
-    for row in soup.select(".covers-CoversOdds-datavalue"):
-        props.append(row.text.strip())
-    return props
+    print("▶ Pulling Usage Rates...")
+    usage = usage_rates.fetch_usage()
+    usage.to_csv(f"{DATA_DIR}/usage.csv", index=False)
 
+    print("▶ Pulling Playtype Data...")
+    playtypes = synergy_playtypes.fetch_playtypes()
+    playtypes.to_csv(f"{DATA_DIR}/playtypes.csv", index=False)
 
-def get_fanduel_props():
-    url = "https://sportsbook.fanduel.com/cache/psevent/..."  # real API endpoints rotate
-    # Placeholder: in practice you’d hit their JSON endpoints (FanDuel, DK, Caesars all have hidden APIs)
-    return {}
+    print("▶ Pulling On/Off Splits...")
+    onoff = on_off.fetch_onoff()
+    onoff.to_csv(f"{DATA_DIR}/onoff.csv", index=False)
 
+    print("▶ Pulling Rest/Days + Travel Info...")
+    rest = rest_days.fetch_rest()
+    travel = weather_travel.fetch_travel()
+    rest.to_csv(f"{DATA_DIR}/rest_days.csv", index=False)
+    travel.to_csv(f"{DATA_DIR}/travel.csv", index=False)
 
-# =========================
-# 4. PrizePicks Daily Lines
-# =========================
-def get_prizepicks_lines():
-    url = "https://api.prizepicks.com/projections"
-    resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).json()
+    print("✅ All data pulled + saved to /data")
 
-    data = resp["data"]
-    projections = []
-    for item in data:
-        player = item["attributes"]["athlete_name"]
-        stat = item["attributes"]["stat_type"]
-        line = item["attributes"]["line_score"]
-        projections.append({"player": player, "stat": stat, "line": line})
-    return pd.DataFrame(projections)
-
-
-# =========================
-# RUN EVERYTHING
-# =========================
 if __name__ == "__main__":
-    today = datetime.date.today().strftime("%Y-%m-%d")
-
-    # Example: get Ariel Atkins game logs
-    # (replace with actual PlayerID from WNBA.com stats)
-    try:
-        logs = get_wnba_game_logs(player_id="202250")  
-        logs.to_csv(f"data/gamelogs_{today}.csv", index=False)
-    except:
-        print("WNBA logs not pulled - check PlayerID.")
-
-    # PrizePicks
-    try:
-        pp = get_prizepicks_lines()
-        pp.to_csv(f"data/prizepicks_{today}.csv", index=False)
-    except:
-        print("PrizePicks fetch failed.")
-
-    # Covers odds
-    try:
-        covers = scrape_covers_player_props()
-        print("Sample Covers odds:", covers[:10])
-    except:
-        print("Covers scrape failed.")
+    run_all_scrapers()
